@@ -1,3 +1,21 @@
+# [LevelsRanks] Core — fixed by Dz!ad3k
+
+Fork of [ABKAM2023/CS2-LevelsRanks-Core](https://github.com/ABKAM2023/CS2-LevelsRanks-Core) v1.1.4 with fixes for the current CounterStrikeSharp (net10.0). It is tested on a live 5v5 server, [Trollownia.pl](https://trollownia.pl).
+
+**Download:** [Releases](../../releases) → `LR-Core.zip`. It contains `[LR] Core.dll`, `Dapper.dll` and `MySqlConnector.dll`. Configs, `lang/` and `shared/LevelsRanksApi` from the original release stay unchanged. Requires MenuManager [Core].
+
+### What is fixed
+- 👤 **Players missing from `OnlineUsers` are loaded automatically.** Before, a missed `OnClientAuthorized` left a player with no XP or rank until they reconnected, and modules such as FakeRank skipped them. This happened after a plugin reload, with late Steam auth or after a DB error. Now missing players are loaded on `player_connect_full` and by a 10 s safety-net timer, with duplicate-load protection.
+- 🛠️ Builds against the current CounterStrikeSharp (net10.0), with fixed DLL paths in the csproj and Dapper/MySqlConnector copied to the output.
+
+### Co naprawiono (PL)
+- Gracze „zgubieni” przez LR Core są doczytywani automatycznie, bez wychodzenia z serwera.
+- Zbudowany pod aktualny CounterStrikeSharp (.NET 10).
+
+Original author: **ABKAM** (designed by RoadSide Romeo & Wend4r). Original README below.
+
+---
+
 ![GitHub Repo stars](https://img.shields.io/github/stars/ABKAM2023/CS2-LevelsRanks-Core?style=for-the-badge)
 ![GitHub all releases](https://img.shields.io/github/downloads/ABKAM2023/CS2-LevelsRanks-Core/total?style=for-the-badge)
 

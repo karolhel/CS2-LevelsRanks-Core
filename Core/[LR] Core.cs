@@ -23,9 +23,9 @@ namespace LevelsRanks;
 [MinimumApiVersion(80)]
 public class LevelsRanks : BasePlugin
 {
-    public override string ModuleName => "[LevelsRanks] Core";
-	public override string ModuleAuthor => "ABKAM designed by RoadSide Romeo & Wend4r";
-    public override string ModuleVersion => "v1.1.4";
+    public override string ModuleName => "[LevelsRanks] Core by Dz!ad3k";
+	public override string ModuleAuthor => "ABKAM designed by RoadSide Romeo & Wend4r, fixed by Dz!ad3k";
+    public override string ModuleVersion => "v1.1.5";
     public DatabaseConnection DatabaseConnection { get; set; } = null!;
     public Database Database { get; set; } = null!;
     public string? DbConnectionString = string.Empty;
@@ -107,6 +107,7 @@ public class LevelsRanks : BasePlugin
 
         AddTimer(5.0f, async () => await ProcessUserUpdateQueue(), TimerFlags.REPEAT);
         AddTimer(60.0f, async () => await UpdateOnlineUserPlaytime(), TimerFlags.REPEAT);
+        AddTimer(10.0f, LoadMissingOnlineUsers, TimerFlags.REPEAT);
 
         Task.Run(ReauthorizeOnlinePlayers);
 
@@ -383,7 +384,9 @@ public class LevelsRanks : BasePlugin
 
             if (player is null || !player.IsValid) return;
 
-            Server.NextFrame(() => OnClientAuthorized(player, id));
+            var steamId64 = id.SteamId64;
+            var playerName = player.PlayerName;
+            Server.NextFrame(() => LoadOnlineUser(steamId64, playerName));
         });
 
         RegisterEventHandler<EventPlayerDisconnect>(OnPlayerDisconnect);
@@ -402,10 +405,15 @@ public class LevelsRanks : BasePlugin
         RegisterEventHandler<EventRoundMvp>(OnRoundMvp);
     }
 
-    private void OnClientAuthorized(CCSPlayerController player, SteamID steamId)
+    // Players whose data is currently being loaded from the database (prevents duplicate loads).
+    private readonly ConcurrentDictionary<string, byte> _loadingUsers = new();
+
+    private void LoadOnlineUser(ulong steamId64, string playerName)
     {
-        var steamIdStr = SteamIdConverter.ConvertToSteamId(player.AuthorizedSteamID!.SteamId64);
-        var playerName = player.PlayerName;
+        if (steamId64 == 0) return;
+
+        var steamIdStr = SteamIdConverter.ConvertToSteamId(steamId64);
+        if (OnlineUsers.ContainsKey(steamIdStr) || !_loadingUsers.TryAdd(steamIdStr, 0)) return;
 
         Task.Run(async () =>
         {
@@ -432,13 +440,32 @@ public class LevelsRanks : BasePlugin
                     userFromDb.LastConnect = (int)currentTime;
                 }
 
-                Server.NextFrame(() => { OnlineUsers[steamIdStr] = userFromDb; });
+                Server.NextFrame(() =>
+                {
+                    OnlineUsers[steamIdStr] = userFromDb;
+                    _loadingUsers.TryRemove(steamIdStr, out _);
+                    CheckAndUpdateRank(userFromDb);
+                });
             }
             catch (Exception e)
             {
-                Logger.LogError(e.ToString());
+                _loadingUsers.TryRemove(steamIdStr, out _);
+                Logger.LogError($"Failed to load LR user {steamIdStr}: {e}");
             }
         });
+    }
+
+    // Safety net: OnClientAuthorized is not always received (plugin reload, late Steam auth, DB error),
+    // which left players without rank until reconnect. Periodically load any player that is missing.
+    private void LoadMissingOnlineUsers()
+    {
+        foreach (var player in Utilities.GetPlayers())
+        {
+            if (player is not { IsValid: true, IsBot: false, IsHLTV: false } || player.AuthorizedSteamID == null)
+                continue;
+
+            LoadOnlineUser(player.AuthorizedSteamID.SteamId64, player.PlayerName);
+        }
     }
 
     private HookResult OnPlayerConnectFull(EventPlayerConnectFull eventPlayerConnectFull, GameEventInfo gameEventInfo)
@@ -451,7 +478,7 @@ public class LevelsRanks : BasePlugin
         if (OnlineUsers.TryGetValue(steamIdStr, out var user))
             CheckAndUpdateRank(user);
         else
-            Logger.LogWarning($"Player Online with SteamID {steamIdStr} not found in OnlineUsers.");
+            LoadOnlineUser(player.AuthorizedSteamID.SteamId64, player.PlayerName);
 
         return HookResult.Continue;
     }
@@ -1743,4 +1770,4 @@ public class LevelsRanks : BasePlugin
 
         return message;
     }
-}
+}
